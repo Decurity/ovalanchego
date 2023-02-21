@@ -132,3 +132,7 @@ func (m *txMetrics) AddPermissionlessDelegatorTx(*txs.AddPermissionlessDelegator
 	m.numAddPermissionlessDelegatorTxs.Inc()
 	return nil
 }
+
+func (m *txMetrics) TransferTx(*txs.TransferTx) error {
+	return nil
+}

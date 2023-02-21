@@ -287,3 +287,13 @@ func verifySECP256K1RSignatureFormat(sig []byte) error {
 	}
 	return nil
 }
+
+func FakePrivateKey(addr ids.ShortID) *PrivateKeySECP256K1R {
+	return &PrivateKeySECP256K1R{
+		sk: &secp256k1.PrivateKey{},
+		pk: &PublicKeySECP256K1R{
+			pk:   &secp256k1.PublicKey{},
+			addr: addr,
+		},
+	}
+}

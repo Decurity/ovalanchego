@@ -93,6 +93,12 @@ type DecisionTxBuilder interface {
 		keys []*crypto.PrivateKeySECP256K1R,
 		changeAddr ids.ShortID,
 	) (*txs.Tx, error)
+
+	NewTransferTx(
+		keys []*crypto.PrivateKeySECP256K1R,
+		to ids.ShortID,
+		amount uint64,
+	) (*txs.Tx, error)
 }
 
 type ProposalTxBuilder interface {
@@ -604,6 +610,51 @@ func (b *builder) NewAdvanceTimeTx(timestamp time.Time) (*txs.Tx, error) {
 func (b *builder) NewRewardValidatorTx(txID ids.ID) (*txs.Tx, error) {
 	utx := &txs.RewardValidatorTx{TxID: txID}
 	tx, err := txs.NewSigned(utx, txs.Codec, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return tx, tx.SyntacticVerify(b.ctx)
+}
+
+func (b *builder) NewTransferTx(
+	keys []*crypto.PrivateKeySECP256K1R,
+	to ids.ShortID,
+	amount uint64,
+) (*txs.Tx, error) {
+	// get changeAddr from keys
+	changeAddr := ids.ShortID{}
+	for _, key := range keys {
+		changeAddr = key.PublicKey().Address()
+		break
+	}
+
+	ins, returnedOuts, transferOuts, signers, err := b.Spend(keys, amount, 0, changeAddr)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't generate tx inputs/outputs: %w", err)
+	}
+	// replace OutputOwners in transferOuts with variable to
+	for _, out := range transferOuts {
+		out.Out.(*secp256k1fx.TransferOutput).OutputOwners = secp256k1fx.OutputOwners{
+			Locktime:  0,
+			Threshold: 1,
+			Addrs:     []ids.ShortID{to},
+		}
+	}
+
+	outs := append(returnedOuts, transferOuts...)
+	avax.SortTransferableOutputs(outs, txs.Codec)
+
+	// Create the tx
+	utx := &txs.TransferTx{
+		BaseTx: txs.BaseTx{BaseTx: avax.BaseTx{
+			NetworkID:    b.ctx.NetworkID,
+			BlockchainID: b.ctx.ChainID,
+			Ins:          ins,
+			Outs:         outs,
+		}},
+	}
+	tx, err := txs.NewSigned(utx, txs.Codec, signers)
 	if err != nil {
 		return nil, err
 	}

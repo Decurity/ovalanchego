@@ -1,248 +1,51 @@
 <div align="center">
-  <img src="resources/AvalancheLogoRed.png?raw=true">
+  <img src="resources/OvalancheLogo.png?raw=true">
 </div>
 
 ---
 
-Node implementation for the [Avalanche](https://avax.network) network -
-a blockchains platform with high throughput, and blazing fast transactions.
+Node implementation for the [Ovalanche](https://avax.network) network -
+a blockchains platform with high throughput, blazing fast transactions and free transfers!
 
-## Installation
+### Building OvalancheGo
 
-Avalanche is an incredibly lightweight protocol, so the minimum computer requirements are quite modest.
-Note that as network usage increases, hardware requirements may change.
-
-The minimum recommended hardware specification for nodes connected to Mainnet is:
-
-- CPU: Equivalent of 8 AWS vCPU
-- RAM: 16 GiB
-- Storage: 1 TiB
-- OS: Ubuntu 20.04/22.04 or macOS >= 12
-- Network: Reliable IPv4 or IPv6 network connection, with an open public port.
-
-If you plan to build AvalancheGo from source, you will also need the following software:
-
-- [Go](https://golang.org/doc/install) version >= 1.18.1
-- [gcc](https://gcc.gnu.org/)
-- g++
-
-### Building From Source
-
-#### Clone The Repository
-
-Clone the AvalancheGo repository:
-
-```sh
-git clone git@github.com:ava-labs/avalanchego.git
-cd avalanchego
-```
-
-This will clone and checkout the `master` branch.
-
-#### Building AvalancheGo
-
-Build AvalancheGo by running the build script:
+Build OvalancheGo by running the build script:
 
 ```sh
 ./scripts/build.sh
 ```
 
-The `avalanchego` binary is now in the `build` directory. To run:
+### Running local testnet
 
-```sh
-./build/avalanchego
-```
+https://docs.avax.network/quickstart/create-a-local-test-network
 
-### Binary Repository
+### P-chain endpoints
 
-Install AvalancheGo using an `apt` repository.
+#### `platform.transfer` (zero fee transfers!)
 
-#### Adding the APT Repository
+arguments:
+* username
+* password
+* amount - amount of OVAX to transfer
+* to - address to transfer OVAX to
 
-If you have already added the APT repository, you do not need to add it again.
+note: to use this endpoint you have to create user and import key via `keystore.createUser` and `platform.importKey` endpoints
 
-To add the repository on Ubuntu, run:
+#### `platform.previewSpend` (preview a transaction)
 
-```sh
-sudo su -
-wget -qO - https://downloads.avax.network/avalanchego.gpg.key | tee /etc/apt/trusted.gpg.d/avalanchego.asc
-source /etc/os-release && echo "deb https://downloads.avax.network/apt $UBUNTU_CODENAME main" > /etc/apt/sources.list.d/avalanche.list
-exit
-```
+arguments:
+* amount - amount of OVAX to transfer
+* from - address to transfer OVAX from
+* to - address to transfer OVAX to
 
-#### Installing the Latest Version
+#### `platform.getFlag` (get the winning flag if you have positive balance!)
 
-After adding the APT repository, install avalanchego by running:
+arguments:
+* username
+* password
 
-```sh
-sudo apt update
-sudo apt install avalanchego
-```
+as well as standard `platform` endpoints defined in https://docs.avax.network/apis/avalanchego/apis/p-chain
 
-### Binary Install
-
-Download the [latest build](https://github.com/ava-labs/avalanchego/releases/latest) for your operating system and architecture.
-
-The Avalanche binary to be executed is named `avalanchego`.
-
-### Docker Install
-
-Make sure docker is installed on the machine - so commands like `docker run` etc. are available.
-
-Building the docker image of latest avalanchego branch can be done by running:
-
-```sh
-./scripts/build_image.sh
-```
-
-To check the built image, run:
-
-```sh
-docker image ls
-```
-
-The image should be tagged as `avaplatform/avalanchego:xxxxxxxx`, where `xxxxxxxx` is the shortened commit of the Avalanche source it was built from. To run the avalanche node, run:
-
-```sh
-docker run -ti -p 9650:9650 -p 9651:9651 avaplatform/avalanchego:xxxxxxxx /avalanchego/build/avalanchego
-```
-
-## Running Avalanche
-
-### Connecting to Mainnet
-
-To connect to the Avalanche Mainnet, run:
-
-```sh
-./build/avalanchego
-```
-
-You should see some pretty ASCII art and log messages.
-
-You can use `Ctrl+C` to kill the node.
-
-### Connecting to Fuji
-
-To connect to the Fuji Testnet, run:
-
-```sh
-./build/avalanchego --network-id=fuji
-```
-
-### Creating a Local Testnet
-
-See [this tutorial.](https://docs.avax.network/build/tutorials/platform/create-a-local-test-network/)
-
-## Bootstrapping
-
-A node needs to catch up to the latest network state before it can participate in consensus and serve API calls. This process, called bootstrapping, currently takes several days for a new node connected to Mainnet.
-
-A node will not [report healthy](https://docs.avax.network/build/avalanchego-apis/health) until it is done bootstrapping.
-
-Improvements that reduce the amount of time it takes to bootstrap are under development.
-
-The bottleneck during bootstrapping is typically database IO. Using a more powerful CPU or increasing the database IOPS on the computer running a node will decrease the amount of time bootstrapping takes.
-
-## Generating Code
-
-Avalanchego uses multiple tools to generate efficient and boilerplate code.
-
-### Running protobuf codegen
-
-To regenerate the protobuf go code, run `scripts/protobuf_codegen.sh` from the root of the repo.
-
-This should only be necessary when upgrading protobuf versions or modifying .proto definition files.
-
-To use this script, you must have [buf](https://docs.buf.build/installation) (v1.10.0), protoc-gen-go (v1.28.0) and protoc-gen-go-grpc (v1.2.0) installed.
-
-To install the buf dependencies:
-
-```sh
-go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.0
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
-```
-
-If you have not already, you may need to add `$GOPATH/bin` to your `$PATH`:
-
-```sh
-export PATH="$PATH:$(go env GOPATH)/bin"
-```
-
-If you extract buf to ~/software/buf/bin, the following should work:
-
-```sh
-export PATH=$PATH:~/software/buf/bin/:~/go/bin
-go get google.golang.org/protobuf/cmd/protoc-gen-go
-go get google.golang.org/protobuf/cmd/protoc-gen-go-grpc
-scripts/protobuf_codegen.sh
-```
-
-For more information, refer to the [GRPC Golang Quick Start Guide](https://grpc.io/docs/languages/go/quickstart/).
-
-### Running protobuf codegen from docker
-
-```sh
-docker build -t avalanche:protobuf_codegen -f api/Dockerfile.buf .
-docker run -t -i -v $(pwd):/opt/avalanche -w/opt/avalanche avalanche:protobuf_codegen bash -c "scripts/protobuf_codegen.sh"
-```
-
-### Running mock codegen
-
-To regenerate the [gomock](https://github.com/golang/mock) code, run `scripts/mock.gen.sh` from the root of the repo.
-
-This should only be necessary when modifying exported interfaces or after modifying `scripts/mock.mockgen.txt`.
-
-## Versioning
-
-### Version Semantics
-
-AvalancheGo is first and foremost a client for the Avalanche network. The versioning of AvalancheGo follows that of the Avalanche network.
-
-- `v0.x.x` indicates a development network version.
-- `v1.x.x` indicates a production network version.
-- `vx.[Upgrade].x` indicates the number of network upgrades that have occurred.
-- `vx.x.[Patch]` indicates the number of client upgrades that have occurred since the last network upgrade.
-
-### Library Compatibility Guarantees
-
-Because AvalancheGo's version denotes the network version, it is expected that interfaces exported by AvalancheGo's packages may change in `Patch` version updates.
-
-### API Compatibility Guarantees
-
-APIs exposed when running AvalancheGo will maintain backwards compatibility, unless the functionality is explicitly deprecated and announced when removed.
-
-## Supported Platforms
-
-AvalancheGo can run on different platforms, with different support tiers:
-
-- **Tier 1**: Fully supported by the maintainers, guaranteed to pass all tests including e2e and stress tests.
-- **Tier 2**: Passes all unit and integration tests but not necessarily e2e tests.
-- **Tier 3**: Builds but lightly tested (or not), considered _experimental_.
-- **Not supported**: May not build and not tested, considered _unsafe_. To be supported in the future.
-
-The following table lists currently supported platforms and their corresponding
-AvalancheGo support tiers:
-
-| Architecture | Operating system | Support tier  |
-| :----------: | :--------------: | :-----------: |
-|    amd64     |      Linux       |       1       |
-|    arm64     |      Linux       |       2       |
-|    amd64     |      Darwin      |       2       |
-|    amd64     |     Windows      |       3       |
-|     arm      |      Linux       | Not supported |
-|     i386     |      Linux       | Not supported |
-|    arm64     |      Darwin      | Not supported |
-
-To officially support a new platform, one must satisfy the following requirements:
-
-| AvalancheGo continuous integration | Tier 1  | Tier 2  | Tier 3  |
-| ---------------------------------- | :-----: | :-----: | :-----: |
-| Build passes                       | &check; | &check; | &check; |
-| Unit and integration tests pass    | &check; | &check; |         |
-| End-to-end and stress tests pass   | &check; |         |         |
-
-## Security Bugs
-
-**We and our community welcome responsible disclosures.**
-
-If you've discovered a security vulnerability, please report it via our [bug bounty program](https://hackenproof.com/avalanche/). Valid reports will be eligible for a reward (terms and conditions apply).
+### Prefunded addresses
+* `P-custom1v9wzm63cr5ta2u0n5m7q4repdzfnpnare9uxv8` (300 000 000 OVAX)
+* `P-custom17yexyhlpvevk33ydux8upm7fu0mlaw750tsdzp` (300 000 00 OVAX)

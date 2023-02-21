@@ -76,3 +76,8 @@ func (*remover) RewardValidatorTx(*txs.RewardValidatorTx) error {
 	// this tx is never in mempool
 	return nil
 }
+
+func (r *remover) TransferTx(*txs.TransferTx) error {
+	r.m.removeDecisionTxs([]*txs.Tx{r.tx})
+	return nil
+}

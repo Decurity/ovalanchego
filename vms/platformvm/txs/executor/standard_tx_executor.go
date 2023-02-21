@@ -17,13 +17,19 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/state"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 	"github.com/ava-labs/avalanchego/vms/platformvm/utxo"
+	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 )
 
 var (
 	_ txs.Visitor = (*StandardTxExecutor)(nil)
 
+	errInputAmountMissmatch     = errors.New("utxo amount doesn't match input amount")
+	errInputsUTXOSMismatch      = errors.New("number of inputs is different from number of utxos")
+	errImportedUTXOMissmatch    = errors.New("imported input doesn't match expected utxo")
 	errEmptyNodeID              = errors.New("validator nodeID cannot be empty")
 	errMaxStakeDurationTooLarge = errors.New("max stake duration must be less than or equal to the global max stake duration")
+	errWrongOutType             = errors.New("wrong UTXO output type")
+	errInsufficientFunds        = errors.New("insufficient funds")
 )
 
 type StandardTxExecutor struct {
@@ -456,6 +462,57 @@ func (e *StandardTxExecutor) AddPermissionlessDelegatorTx(tx *txs.AddPermissionl
 
 	e.State.PutPendingDelegator(newStaker)
 	utxo.Consume(e.State, tx.Ins)
+	utxo.Produce(e.State, txID, tx.Outs)
+
+	return nil
+}
+
+func (e *StandardTxExecutor) TransferTx(tx *txs.TransferTx) error {
+	if err := e.Tx.SyntacticVerify(e.Ctx); err != nil {
+		return err
+	}
+
+	// Get UTXOs
+	utxos := make([]*avax.UTXO, len(tx.Ins))
+	for index, input := range tx.Ins {
+		utxo, err := e.State.GetUTXO(input.InputID())
+		if err != nil {
+			return fmt.Errorf(
+				"failed to read consumed UTXO %s due to: %w",
+				&input.UTXOID,
+				err,
+			)
+		}
+		utxos[index] = utxo
+	}
+
+	// Verify that the UTXOs match the inputs
+	if len(tx.Ins) != len(utxos) {
+		return fmt.Errorf("there are %d inputs and %d utxos: %w", len(tx.Ins), len(utxos), errInputsUTXOSMismatch)
+	}
+
+	for i, in := range tx.Ins {
+		utxo := utxos[i]
+
+		if utxo.InputID() != in.InputID() {
+			return errImportedUTXOMissmatch
+		}
+
+		out, ok := utxo.Out.(*secp256k1fx.TransferOutput)
+		if !ok {
+			return errWrongOutType
+		}
+
+		if out.Amt != in.In.Amount() {
+			return fmt.Errorf("utxo.Amt %d, input.Amt %d: %w", out.Amt, in.In.Amount(), errInputAmountMissmatch)
+		}
+	}
+
+	txID := e.Tx.ID()
+
+	// Consume the UTXOS
+	utxo.Consume(e.State, tx.Ins)
+	// Produce the UTXOS
 	utxo.Produce(e.State, txID, tx.Outs)
 
 	return nil

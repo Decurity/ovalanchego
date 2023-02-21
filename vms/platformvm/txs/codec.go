@@ -79,6 +79,7 @@ func RegisterUnsignedTxsTypes(targetCodec codec.Registry) error {
 		targetCodec.RegisterType(&ExportTx{}),
 		targetCodec.RegisterType(&AdvanceTimeTx{}),
 		targetCodec.RegisterType(&RewardValidatorTx{}),
+		targetCodec.RegisterType(&TransferTx{}),
 
 		targetCodec.RegisterType(&stakeable.LockIn{}),
 		targetCodec.RegisterType(&stakeable.LockOut{}),

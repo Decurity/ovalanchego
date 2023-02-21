@@ -83,3 +83,8 @@ func (i *issuer) AddPermissionlessDelegatorTx(*txs.AddPermissionlessDelegatorTx)
 	i.m.addStakerTx(i.tx)
 	return nil
 }
+
+func (i *issuer) TransferTx(*txs.TransferTx) error {
+	i.m.addDecisionTx(i.tx)
+	return nil
+}

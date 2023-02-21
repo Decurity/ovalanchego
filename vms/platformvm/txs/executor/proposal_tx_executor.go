@@ -95,6 +95,10 @@ func (*ProposalTxExecutor) AddPermissionlessDelegatorTx(*txs.AddPermissionlessDe
 	return errWrongTxType
 }
 
+func (*ProposalTxExecutor) TransferTx(*txs.TransferTx) error {
+	return errWrongTxType
+}
+
 func (e *ProposalTxExecutor) AddValidatorTx(tx *txs.AddValidatorTx) error {
 	// AddValidatorTx is a proposal transaction until the Banff fork
 	// activation. Following the activation, AddValidatorTxs must be issued into

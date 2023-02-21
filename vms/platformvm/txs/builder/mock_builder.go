@@ -189,3 +189,7 @@ func (mr *MockBuilderMockRecorder) NewRewardValidatorTx(arg0 interface{}) *gomoc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewRewardValidatorTx", reflect.TypeOf((*MockBuilder)(nil).NewRewardValidatorTx), arg0)
 }
+
+func (mr *MockBuilderMockRecorder) NewAddressStateTx(arg0 interface{}) *gomock.Call {
+	return nil
+}

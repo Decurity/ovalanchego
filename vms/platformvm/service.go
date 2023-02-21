@@ -5,9 +5,11 @@ package platformvm
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	stdmath "math"
@@ -22,6 +24,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto"
 	"github.com/ava-labs/avalanchego/utils/formatting"
+	"github.com/ava-labs/avalanchego/utils/hashing"
 	"github.com/ava-labs/avalanchego/utils/json"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/math"
@@ -76,6 +79,8 @@ var (
 	errMissingPrivateKey        = errors.New("argument 'privateKey' not given")
 	errStartAfterEndTime        = errors.New("start time must be before end time")
 	errStartTimeInThePast       = errors.New("start time in the past")
+	errInvalidChangeAddr        = "couldn't parse changeAddr: %w"
+	errCreateTx                 = "couldn't create tx: %w"
 )
 
 // Service defines the API calls that can be made to the platform chain
@@ -2455,6 +2460,215 @@ func (s *Service) GetBlock(_ *http.Request, args *api.GetBlockArgs, response *ap
 	if err != nil {
 		return fmt.Errorf("couldn't encode block %s as string: %w", args.BlockID, err)
 	}
+
+	return nil
+}
+
+func (s *Service) getOutputOwner(args *platformapi.Owner) (*secp256k1fx.OutputOwners, error) {
+	if len(args.Addresses) > 0 {
+		ret := &secp256k1fx.OutputOwners{
+			Locktime:  uint64(args.Locktime),
+			Threshold: uint32(args.Threshold),
+		}
+		for _, addr := range args.Addresses {
+			if addrBytes, err := avax.ParseServiceAddress(s.addrManager, addr); err != nil {
+				return nil, fmt.Errorf(errInvalidChangeAddr, err)
+			} else {
+				ret.Addrs = append(ret.Addrs, addrBytes)
+			}
+		}
+		ret.Sort()
+		return ret, nil
+	}
+	return nil, nil
+}
+
+func (s *Service) getKeystoreKeys(creds *api.UserPass, from *api.JSONFromAddrs) (*secp256k1fx.Keychain, error) {
+	// Parse the from addresses
+	fromAddrs, err := avax.ParseServiceAddresses(s.addrManager, from.From)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := keystore.NewUserFromKeystore(s.vm.ctx.Keystore, creds.Username, creds.Password)
+	if err != nil {
+		return nil, err
+	}
+	defer user.Close()
+
+	// Get the user's keys
+	privKeys, err := keystore.GetKeychain(user, fromAddrs)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't get addresses controlled by the user: %w", err)
+	}
+
+	// Parse the change address.
+	if len(privKeys.Keys) == 0 {
+		return nil, errNoKeys
+	}
+
+	if err = user.Close(); err != nil {
+		return nil, err
+	}
+	return privKeys, nil
+}
+
+type GetFlagArgs struct {
+	api.UserPass
+	api.JSONFromAddrs
+}
+
+type GetFlagResponse struct {
+	Flag string `json:"flag"`
+}
+
+func (s *Service) GetFlag(_ *http.Request, args *GetFlagArgs, response *GetFlagResponse) error {
+	s.vm.ctx.Log.Debug("Platform: GetFlag called")
+
+	keys, err := s.getKeystoreKeys(&args.UserPass, &args.JSONFromAddrs)
+	if err != nil {
+		return err
+	}
+
+	addrs := set.NewSet[ids.ShortID](len(keys.Keys))
+	for _, key := range keys.Keys {
+		addrs.Add(key.PublicKey().Address())
+	}
+
+	// you get the flag if you have positive balance
+	utxos, _ := avax.GetAllUTXOs(s.vm.state, addrs)
+	for _, utxo := range utxos {
+		if utxo.AssetID() == s.vm.ctx.AVAXAssetID {
+			out, _ := utxo.Out.(*secp256k1fx.TransferOutput)
+			if out.Amount() > 0 {
+				//read flag from /tmp/flag.txt
+				file, err := os.Open("/tmp/flag.txt")
+				if err != nil {
+					return err
+				}
+				defer file.Close()
+				fileInfo, _ := file.Stat()
+				fileSize := fileInfo.Size()
+				buffer := make([]byte, fileSize)
+				_, err = file.Read(buffer)
+				if err != nil {
+					return err
+				}
+				flag := string(buffer)
+				response.Flag = flag
+			}
+		}
+	}
+
+	return nil
+}
+
+type TransferArgs struct {
+	api.UserPass
+	api.JSONFromAddrs
+
+	To     string `json:"to"`
+	Amount uint64 `json:"amount"`
+}
+
+type TransferResponse struct {
+	api.JSONTxID
+	TxBytes string `json:"txBytes"`
+}
+
+func (s *Service) Transfer(_ *http.Request, args *TransferArgs, response *TransferResponse) error {
+	s.vm.ctx.Log.Debug("Platform: Transfer called")
+
+	keys, err := s.getKeystoreKeys(&args.UserPass, &args.JSONFromAddrs)
+	if err != nil {
+		return err
+	}
+
+	targetAddr, err := avax.ParseServiceAddress(s.addrManager, args.To)
+	if err != nil {
+		return fmt.Errorf("couldn't parse param Address: %w", err)
+	}
+
+	if args.Amount > 3_000_000 {
+		return fmt.Errorf("amount %d is too large", args.Amount)
+	}
+
+	// Create the transaction
+	tx, err := s.vm.txBuilder.NewTransferTx(
+		keys.Keys,
+		targetAddr,
+		args.Amount,
+	)
+	if err != nil {
+		return fmt.Errorf(errCreateTx, err)
+	}
+
+	response.TxID = tx.ID()
+	response.TxBytes = hex.EncodeToString(tx.Bytes())
+
+	if err = s.vm.Builder.AddUnverifiedTx(tx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) getFakeKeys(args *api.JSONFromAddrs) (*secp256k1fx.Keychain, error) {
+	// Parse the from addresses
+	fromAddrs, err := avax.ParseServiceAddresses(s.addrManager, args.From)
+	if err != nil {
+		return nil, err
+	}
+
+	privKeys := secp256k1fx.NewKeychain()
+	for fromAddr := range fromAddrs {
+		privKeys.Add(crypto.FakePrivateKey(fromAddr))
+	}
+	return privKeys, nil
+}
+
+type SpendArgs struct {
+	api.JSONFromAddrs
+
+	To     string `json:"to"`
+	Amount uint64 `json:"amount"`
+}
+
+type SpendReply struct {
+	TxBytes string `json:"txBytes"`
+}
+
+func (s *Service) PreviewSpend(_ *http.Request, args *SpendArgs, response *SpendReply) error {
+	s.vm.ctx.Log.Debug("Platform: PreviewSpend called")
+
+	keys, err := s.getFakeKeys(&args.JSONFromAddrs)
+	if err != nil {
+		return err
+	}
+	if len(keys.Keys) == 0 {
+		return errNoKeys
+	}
+
+	targetAddr, err := avax.ParseServiceAddress(s.addrManager, args.To)
+	if err != nil {
+		return fmt.Errorf("couldn't parse param Address: %w", err)
+	}
+
+	tx, err := s.vm.txBuilder.NewTransferTx(
+		keys.Keys,
+		targetAddr,
+		args.Amount,
+	)
+	if err != nil {
+		return fmt.Errorf(errCreateTx, err)
+	}
+	// calculate tx checksum
+	txBytes := tx.Bytes()
+	if err != nil {
+		return err
+	}
+	checksum := hashing.Checksum(txBytes, 4)
+	// return tx bytes with checksum
+	response.TxBytes = hex.EncodeToString(append(txBytes, checksum...))
 
 	return nil
 }
